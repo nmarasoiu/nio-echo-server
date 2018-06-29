@@ -1,5 +1,8 @@
+import sun.net.ConnectionResetException;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -7,6 +10,7 @@ import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 
 public class Processor implements Runnable {
+    private static final int BUFFER_SIZE = 1024;
     private final Selector readSelector = Selector.open();
     private final Selector connectionEventsSelector = Selector.open();
     private final Queue<SocketChannel> newConnectionsRegisterQueue = new ArrayBlockingQueue<>(1024);
@@ -48,9 +52,9 @@ public class Processor implements Runnable {
             while (!readSelector.isOpen()) ;
             while (true) {
                 registerNewConnections();
-                processConnectionsWithNewData();
+                while(!processConnectionsWithNewData());
                 removeClosedConnectionsFromPending();
-                processPendingWrites();
+                while (!processPendingWrites()) ;
             }
         } catch (Throwable e) {
             e.printStackTrace();
@@ -60,25 +64,32 @@ public class Processor implements Runnable {
     private void registerNewConnections() {
         for (SocketChannel channel : newConnectionsRegisterQueue) {
             try {
-                channel.register(connectionEventsSelector, SelectionKey.OP_CONNECT);
-                SelectionKey key = channel.register(readSelector, SelectionKey.OP_READ);
-                key.attach(new BufferAndCtx(key, ByteBuffer.allocateDirect(1024*1024)));
+                try {
+                    SelectionKey key = channel.register(readSelector, SelectionKey.OP_READ);
+                    key.attach(new BufferAndCtx(key, ByteBuffer.allocateDirect(BUFFER_SIZE)));
+                    channel.register(connectionEventsSelector, SelectionKey.OP_CONNECT);
+                } catch (CancelledKeyException e) {
+                    //todo why some channels are already registered with a cancelled key, this is just for newly accepted connections..
+                }
             } catch (Exception e) {
-                System.out.println(e.getMessage());
+                throw new RuntimeException(e);
             }
         }
     }
 
-    private void processConnectionsWithNewData() {
+    private boolean processConnectionsWithNewData() {
         try {
-            readSelector.select(10);
+            readSelector.select(1);
+        } catch (ConnectionResetException e) {
         } catch (IOException e) {
             System.out.println("During readSelect " + e.getMessage());
         }
+        boolean canWrite=true;
         for (SelectionKey key : readSelector.selectedKeys()) {
             BufferAndCtx pendingWrite = (BufferAndCtx) key.attachment();
-            readAndWrite(key, pendingWrite);
+            canWrite = canWrite & readAndWrite(key, pendingWrite);
         }
+        return canWrite;
     }
 
     private void removeClosedConnectionsFromPending() {
@@ -94,39 +105,41 @@ public class Processor implements Runnable {
         }
     }
 
-    private void processPendingWrites() {
+    private boolean processPendingWrites() {
+        boolean canWrite = true;
         for (BufferAndCtx pendingWrite : new HashSet<>(pendingWrites)) {
-            readAndWrite(pendingWrite.selectionKey, pendingWrite);
+            canWrite = readAndWrite(pendingWrite.selectionKey, pendingWrite) & canWrite;
         }
+        return canWrite;
     }
 
-    private void readAndWrite(SelectionKey key, BufferAndCtx pendingWrite) {
+    private boolean readAndWrite(SelectionKey key, BufferAndCtx pendingWrite) {
         try {
             SocketChannel channel = (SocketChannel) key.channel();
             ByteBuffer buffer = pendingWrite.buffer;
-            pump(channel, buffer);
+            boolean canWrite = pump(channel, buffer);
             setOrRemovePending(pendingWrite, buffer);
+            return canWrite;
         } catch (IOException e) {
             System.out.println("During readAndWrite: " + e.getMessage());
             key.cancel();
             pendingWrites.remove(pendingWrite);
         }
+        return false;
     }
 
-    private void pump(SocketChannel channel, ByteBuffer buffer) throws IOException {
+    private boolean pump(SocketChannel channel, ByteBuffer buffer) throws IOException {
         boolean canWrite = true;
         while (canWrite && (channel.read(buffer) > 0 || buffer.position() > 0)) {
             buffer.flip();
-            int remaining = buffer.remaining();
-            if (channel.write(buffer) < remaining) {
-//                canWrite = false;
-            }
+            canWrite = channel.write(buffer) > 0;
             if (buffer.hasRemaining()) {
                 buffer.compact();
             } else {
                 buffer.clear();
             }
         }
+        return canWrite;
     }
 
     private void setOrRemovePending(BufferAndCtx pendingWrite, ByteBuffer buffer) {
