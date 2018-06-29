@@ -1,7 +1,5 @@
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -12,7 +10,7 @@ public class Processor implements Runnable {
     private final Selector readSelector = Selector.open();
     private final Selector connectionEventsSelector = Selector.open();
     private final Queue<SocketChannel> newConnectionsRegisterQueue = new ArrayBlockingQueue<>(1024);
-    private final Set<PendingWrite> pendingWrites = new HashSet<>();
+    private final Set<BufferAndCtx> pendingWrites = new HashSet<>();
 
     Processor() throws IOException {
     }
@@ -21,28 +19,26 @@ public class Processor implements Runnable {
         newConnectionsRegisterQueue.add(channel);
     }
 
-    class PendingWrite {
+    final class BufferAndCtx {
         final SelectionKey selectionKey;
         final ByteBuffer buffer;
-        final UUID uuid;
 
-        PendingWrite(SelectionKey selectionKey, ByteBuffer buffer) {
+        BufferAndCtx(SelectionKey selectionKey, ByteBuffer buffer) {
             this.selectionKey = selectionKey;
             this.buffer = buffer;
-            this.uuid = UUID.randomUUID();
         }
 
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
-            PendingWrite that = (PendingWrite) o;
-            return Objects.equals(uuid, that.uuid);
+            BufferAndCtx that = (BufferAndCtx) o;
+            return Objects.equals(selectionKey, that.selectionKey);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(uuid);
+            return Objects.hash(selectionKey);
         }
     }
 
@@ -65,7 +61,8 @@ public class Processor implements Runnable {
         for (SocketChannel channel : newConnectionsRegisterQueue) {
             try {
                 channel.register(connectionEventsSelector, SelectionKey.OP_CONNECT);
-                channel.register(readSelector, SelectionKey.OP_READ);
+                SelectionKey key = channel.register(readSelector, SelectionKey.OP_READ);
+                key.attach(new BufferAndCtx(key, ByteBuffer.allocateDirect(1024*1024)));
             } catch (Exception e) {
                 System.out.println(e.getMessage());
             }
@@ -79,7 +76,7 @@ public class Processor implements Runnable {
             System.out.println("During readSelect " + e.getMessage());
         }
         for (SelectionKey key : readSelector.selectedKeys()) {
-            PendingWrite pendingWrite = (PendingWrite) key.attachment();
+            BufferAndCtx pendingWrite = (BufferAndCtx) key.attachment();
             readAndWrite(key, pendingWrite);
         }
     }
@@ -91,32 +88,28 @@ public class Processor implements Runnable {
             System.out.println("During connectionEventsSelect " + e.getMessage());
         }
         for (SelectionKey key : connectionEventsSelector.selectedKeys()) {
-            Object attachment = key.attachment();
-            if (attachment != null) {
-                pendingWrites.remove(attachment);
-                key.cancel();
-            }
+            BufferAndCtx bufAndCtx = (BufferAndCtx) key.attachment();
+            pendingWrites.remove(bufAndCtx);
+            key.cancel();
         }
     }
 
     private void processPendingWrites() {
-        for (PendingWrite pendingWrite : new HashSet<>(pendingWrites)) {
+        for (BufferAndCtx pendingWrite : new HashSet<>(pendingWrites)) {
             readAndWrite(pendingWrite.selectionKey, pendingWrite);
         }
     }
 
-    private void readAndWrite(SelectionKey key, PendingWrite pendingWrite) {
+    private void readAndWrite(SelectionKey key, BufferAndCtx pendingWrite) {
         try {
             SocketChannel channel = (SocketChannel) key.channel();
-            ByteBuffer buffer = pendingWrite != null ? pendingWrite.buffer : ByteBuffer.allocateDirect(1024);
+            ByteBuffer buffer = pendingWrite.buffer;
             pump(channel, buffer);
-            setOrRemovePending(key, pendingWrite, buffer);
+            setOrRemovePending(pendingWrite, buffer);
         } catch (IOException e) {
             System.out.println("During readAndWrite: " + e.getMessage());
             key.cancel();
-            if (pendingWrite != null) {
-                pendingWrites.remove(pendingWrite);
-            }
+            pendingWrites.remove(pendingWrite);
         }
     }
 
@@ -126,7 +119,7 @@ public class Processor implements Runnable {
             buffer.flip();
             int remaining = buffer.remaining();
             if (channel.write(buffer) < remaining) {
-                canWrite = false;
+//                canWrite = false;
             }
             if (buffer.hasRemaining()) {
                 buffer.compact();
@@ -136,18 +129,10 @@ public class Processor implements Runnable {
         }
     }
 
-    private void setOrRemovePending(SelectionKey key, PendingWrite pendingWrite, ByteBuffer buffer) {
-        if (pendingWrite != null) {
-            pendingWrites.remove(pendingWrite);
-        }
+    private void setOrRemovePending(BufferAndCtx pendingWrite, ByteBuffer buffer) {
+        pendingWrites.remove(pendingWrite);
         if (buffer.position() > 0) {
-            if (pendingWrite == null) {
-                pendingWrite = new PendingWrite(key, buffer);
-            }
-            key.attach(pendingWrite);
             pendingWrites.add(pendingWrite);
-        } else {
-            key.attach(null);
         }
     }
 }
