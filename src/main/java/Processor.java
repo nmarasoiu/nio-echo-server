@@ -8,12 +8,13 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Processor implements Runnable {
     private static final int BUFFER_SIZE = 1024;
     private final Selector readSelector = Selector.open();
     private final Selector connectionEventsSelector = Selector.open();
-    private final Queue<SocketChannel> newConnectionsRegisterQueue = new ArrayBlockingQueue<>(1024);
+    private final Queue<SocketChannel> newConnectionsRegisterQueue = new ConcurrentLinkedQueue<>();
     private final Set<SelectionKey> pendingWrites = new HashSet<>();
 
     Processor() throws IOException {
@@ -29,11 +30,9 @@ public class Processor implements Runnable {
             while (!readSelector.isOpen()) ;
             while (true) {
                 registerNewConnections();
-                processConnectionsWithNewData();
                 removeClosedConnectionsFromPending();
-                while (!pendingWrites.isEmpty()) {
-                    processPendingWrites();
-                }
+                processConnectionsWithNewData();
+                processPendingWrites();
             }
         } catch (Throwable e) {
             e.printStackTrace();
@@ -41,15 +40,12 @@ public class Processor implements Runnable {
     }
 
     private void registerNewConnections() {
-        for (SocketChannel channel : newConnectionsRegisterQueue) {
+        while (!newConnectionsRegisterQueue.isEmpty()) {
+            SocketChannel channel = newConnectionsRegisterQueue.remove();
             try {
-                try {
-                    SelectionKey key = channel.register(readSelector, SelectionKey.OP_READ);
-                    key.attach(ByteBuffer.allocateDirect(BUFFER_SIZE));
-                    channel.register(connectionEventsSelector, SelectionKey.OP_CONNECT);
-                } catch (CancelledKeyException e) {
-                    //todo why some channels are already registered with a cancelled key, this is just for newly accepted connections..
-                }
+                SelectionKey key = channel.register(readSelector, SelectionKey.OP_READ);
+                key.attach(ByteBuffer.allocateDirect(BUFFER_SIZE));
+                channel.register(connectionEventsSelector, SelectionKey.OP_CONNECT);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -105,15 +101,19 @@ public class Processor implements Runnable {
 
     // returns true if the channel was drained, false is more is available in buffer or channel but it cannot write anymore (buffer full)
     private void pump(SocketChannel channel, ByteBuffer buffer) throws IOException {
-        boolean canWrite = true;
-        while (canWrite && (channel.read(buffer) > 0 || buffer.position() > 0)) {
+        int writeCount = 1, readCount;
+        while (writeCount > 0 && ((readCount = channel.read(buffer)) > 0 || buffer.position() > 0)) {
+            System.out.println("Read " + readCount + ", buf=" + buffer);
             buffer.flip();
-            canWrite = channel.write(buffer) > 0;
-            if (buffer.hasRemaining()) {
-                buffer.compact();
-            } else {
-                buffer.clear();
-            }
+            System.out.println("Flip, buf=" + buffer);
+            writeCount = channel.write(buffer);
+            System.out.println("Write " + writeCount + ", buf=" + buffer);
+//            if (buffer.hasRemaining()) {
+            buffer.compact();
+            System.out.println("Compact, buf=" + buffer);
+//            } else {
+//                buffer.clear();
+//            }
         }
     }
 
