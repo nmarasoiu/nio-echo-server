@@ -9,21 +9,20 @@ public class Acceptor implements Runnable {
     private final int port;
     private final Processor processor;
 
-    public Acceptor(int port, Processor processor) {
+    Acceptor(int port, Processor processor) {
         this.port = port;
         this.processor = processor;
     }
 
     public void run() {
         try {
-            int i = 0;
             ServerSocketChannel serverSocket = ServerSocketChannel.open();
             serverSocket.bind(new InetSocketAddress("localhost", port));
             while (!serverSocket.isOpen()) ;
             while (true) {
                 SocketChannel connection = serverSocket.accept();
                 connection.configureBlocking(false);
-                processor.include(connection);
+                processor.register(connection);
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
