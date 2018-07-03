@@ -7,11 +7,14 @@ import java.nio.channels.SocketChannel;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 
+import static java.nio.ByteBuffer.allocateDirect;
+import static java.util.Optional.ofNullable;
+
 public final class Processor implements Runnable {
     private static final int BUFFER_SIZE = 2 * 1024 * 1024;
     private final Queue<SocketChannel> newConnectionsRegisterQueue = new ArrayBlockingQueue<>(1024);
-    private final ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
-    private Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
+    private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
+    private final Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
     private Selector readSelector;
 
     void register(SocketChannel channel) {
@@ -26,12 +29,8 @@ public final class Processor implements Runnable {
             while (true) {
                 registerNewConnections();
                 readSelector.select(1);
-                Map<SelectionKey, ByteBuffer> selectedKeysWithPendingWrites =
-                        readAndWrite(readSelector.selectedKeys());
-                Map<SelectionKey, ByteBuffer> pendingKeysStillPending =
-                        readAndWrite(new HashSet<>(pendingWrites.keySet()));
-                pendingWrites = new LinkedHashMap<>(selectedKeysWithPendingWrites);
-                pendingWrites.putAll(pendingKeysStillPending);
+                readAndWrite(readSelector.selectedKeys());
+                readAndWrite(new HashSet<>(pendingWrites.keySet()));
             }
         } catch (Throwable e) {
             e.printStackTrace();
@@ -45,15 +44,11 @@ public final class Processor implements Runnable {
         }
     }
 
-    private Map<SelectionKey, ByteBuffer> readAndWrite(Set<SelectionKey> keys) {
-        Map<SelectionKey, ByteBuffer> selectedKeysWithPendingWrites = new HashMap<>();
+    private void readAndWrite(Set<SelectionKey> keys) {
         for (SelectionKey key : keys) {
             try {
-                //copy any pending writes into the buffer
-                if (pendingWrites.containsKey(key)) {
-                    buffer.put(pendingWrites.remove(key));
-                }
-                //pump loop
+                ofNullable(pendingWrites.remove(key))
+                        .ifPresent(pendingBuffer -> buffer.put(pendingBuffer));
                 int readCount;
                 boolean canWrite = true;
                 SocketChannel channel = (SocketChannel) key.channel();
@@ -67,22 +62,22 @@ public final class Processor implements Runnable {
                     close(key);
                 } else if (buffer.position() > 0) {
                     buffer.flip();
-                    ByteBuffer pendingBuffer = ByteBuffer.allocateDirect(buffer.limit());
+                    ByteBuffer pendingBuffer = allocateDirect(buffer.limit());
                     pendingBuffer.put(buffer);
-                    selectedKeysWithPendingWrites.put(key, pendingBuffer);
+                    pendingBuffer.flip();
+                    pendingWrites.put(key, pendingBuffer);
                 }
                 buffer.clear();
             } catch (IOException e) {
-                close(key);//we go on with next key, do not exit the loop on exception
+                close(key);//we go on with next key
                 log("readAndWrite" + e.getMessage());
             }
         }
-        return selectedKeysWithPendingWrites;
     }
 
     private void close(SelectionKey key) {
-        key.cancel();
         pendingWrites.remove(key);
+        key.cancel();
     }
 
     private void log(String s) {
