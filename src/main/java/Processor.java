@@ -67,10 +67,11 @@ public final class Processor implements Runnable {
                     pendingBuffer.flip();
                     pendingWrites.put(key, pendingBuffer);
                 }
-                buffer.clear();
             } catch (IOException e) {
                 close(key);//we go on with next key
-                log("readAndWrite" + e.getMessage());
+                log("readAndWrite " + e.getMessage());
+            } finally {
+                buffer.clear();
             }
         }
     }
