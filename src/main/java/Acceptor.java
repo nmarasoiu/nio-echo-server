@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 
@@ -18,13 +19,14 @@ public class Acceptor implements Runnable {
         try {
             ServerSocketChannel serverSocket = ServerSocketChannel.open();
             serverSocket.bind(new InetSocketAddress("localhost", port));
-            while (!serverSocket.isOpen()) ;
             while (true) {
                 SocketChannel connection = serverSocket.accept();
                 connection.configureBlocking(false);
                 processor.register(connection);
             }
-        } catch (IOException e) {
+        } catch (ClosedByInterruptException e) {
+        } catch
+                (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
