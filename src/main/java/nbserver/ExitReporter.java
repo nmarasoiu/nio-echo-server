@@ -1,5 +1,6 @@
 package nbserver;
 
+import java.nio.channels.ClosedByInterruptException;
 import java.util.concurrent.Callable;
 
 import static nbserver.Util.log;
@@ -16,13 +17,13 @@ public class ExitReporter implements Callable<Void> {
         log("Running " + runnable);
         try {
             runnable.run();
-            return null;
+        } catch (ClosedByInterruptException ignore) {
         } catch (Throwable t) {
             t.printStackTrace();
             throw t;
         } finally {
             log("Exit " + runnable);
         }
-
+        return null;
     }
 }

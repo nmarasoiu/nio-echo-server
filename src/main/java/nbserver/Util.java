@@ -1,7 +1,7 @@
 package nbserver;
 
+import java.io.Closeable;
 import java.io.IOException;
-import java.nio.channels.SelectableChannel;
 
 import static java.lang.Thread.currentThread;
 
@@ -9,11 +9,12 @@ final class Util {
     private Util() {
     }
 
-    static void close(SelectableChannel channel) {
+    static void close(Closeable closeable) {
         try {
-            log("Closing channel "+channel);
-            channel.close();
-        } catch (IOException ignore) {
+            log("Closing " + closeable);
+            closeable.close();
+        } catch (IOException e) {
+            log("While closing: ",e);
         }
     }
 
@@ -21,7 +22,7 @@ final class Util {
         return currentThread().isInterrupted();
     }
 
-    static void log(String message, IOException e) {
+    static void log(String message, Throwable e) {
         log(message);
         e.printStackTrace();
     }

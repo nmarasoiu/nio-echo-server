@@ -18,7 +18,6 @@ import static nbserver.Util.isInterrupted;
 
 final class Pump {
     enum StreamState {EOF, OPEN}
-
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
     private final Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
 

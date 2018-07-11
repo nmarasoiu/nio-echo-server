@@ -1,20 +1,21 @@
 package nbserver;
 
 import java.io.IOException;
-import java.nio.channels.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.function.Consumer;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 
 import static java.nio.channels.SelectionKey.OP_READ;
 import static nbserver.Config.selectTimeout;
 import static nbserver.Util.*;
 
 public final class Processor implements RunnableWithException {
-    private final BlockingQueue<SelectableChannel> acceptorQueue;
+    private final ConsumableBlockingQueue<SelectableChannel> acceptorQueue;
     private final Pump pump;
     private Selector readSelector;
 
-    Processor(Pump pump, BlockingQueue<SelectableChannel> acceptorQueue) {
+    Processor(Pump pump, ConsumableBlockingQueue<SelectableChannel> acceptorQueue) {
         this.pump = pump;
         this.acceptorQueue = acceptorQueue;
     }
@@ -28,7 +29,11 @@ public final class Processor implements RunnableWithException {
                 pump.readAndWritePendingWrites();
             }
         } finally {
-            closeConnections();
+            try {
+                closeConnections();
+            } catch (Throwable t) {
+                log("Error, exception thrown in closeConnection on finally: ", t);
+            }
         }
     }
 
@@ -54,7 +59,7 @@ public final class Processor implements RunnableWithException {
     }
 
     private void registerConnections() {
-        consumeQueue(channel -> {
+        acceptorQueue.consumeQueue(channel -> {
             try {
                 channel.register(readSelector, OP_READ);
             } catch (ClosedChannelException e) {
@@ -66,11 +71,11 @@ public final class Processor implements RunnableWithException {
     private void closeConnections() {
         closeRegisteredConnections();
         closeAcceptedButNotRegisteredConnections();
-        closeSelector();
+        close(readSelector);
     }
 
     private void closeRegisteredConnections() {
-        if(readSelector.isOpen()) {
+        if (readSelector.isOpen()) {
             for (SelectionKey key : readSelector.keys()) {
                 SelectableChannel channel = key.channel();
                 close(channel);
@@ -79,21 +84,7 @@ public final class Processor implements RunnableWithException {
     }
 
     private void closeAcceptedButNotRegisteredConnections() {
-        consumeQueue(channel -> close(channel));
+        acceptorQueue.consumeQueue(channel -> close(channel));
     }
 
-    private void consumeQueue(Consumer<SelectableChannel> activity) {
-        SelectableChannel pendingConnection = acceptorQueue.poll();
-        while (pendingConnection != null) {
-            activity.accept(pendingConnection);
-            pendingConnection = acceptorQueue.poll();
-        }
-    }
-
-    private void closeSelector() {
-        try {
-            readSelector.close();
-        } catch (IOException ignore) {
-        }
-    }
 }
