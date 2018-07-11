@@ -3,22 +3,20 @@ package nbserver;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
 
-public class ConsumableBlockingQueue<T> /*implements BlockingQueue<T>*/ {
+class ConsumableBlockingQueue<T> /*implements BlockingQueue<T>*/ {
     private final BlockingQueue<T> blockingQueue;
 
-    public ConsumableBlockingQueue(BlockingQueue<T> blockingQueue) {
+    ConsumableBlockingQueue(BlockingQueue<T> blockingQueue) {
         this.blockingQueue = blockingQueue;
     }
 
-    public void put(T elem) throws InterruptedException {
+    void put(T elem) throws InterruptedException {
         blockingQueue.put(elem);
     }
 
     void consumeQueue(Consumer<T> activity) {
-        T elem = poll();
-        while (elem != null) {
+        for (T elem = poll(); elem != null; elem = poll()) {
             activity.accept(elem);
-            elem = poll();
         }
     }
 
