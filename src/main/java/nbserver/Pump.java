@@ -22,11 +22,11 @@ final class Pump {
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
     private final Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
 
-    void readAndWritePendingWrites() throws ClosedByInterruptException {
+    void readAndWritePendingWrites() throws InterruptedException {
         readAndWrite(new HashSet<>(pendingWrites.keySet()));
     }
 
-    void readAndWrite(Set<SelectionKey> keys) throws ClosedByInterruptException {
+    void readAndWrite(Set<SelectionKey> keys) throws InterruptedException {
         for (SelectionKey key : keys) {
             try {
                 movePendingBufferIfAnyToMainBuffer(key);
@@ -37,14 +37,16 @@ final class Pump {
                     moveToDedicatedBuffer(key);
                 }
             } catch (ClosedByInterruptException e) {
-                throw e;
+                //interrupt status already set
             } catch (IOException e) {
                 close(key);
                 Util.log("readAndWrite " + e.getMessage() + ", closing the key, dropping remaining writes if any", e);
             } finally {
                 buffer.clear();
             }
-            if (isInterrupted()) break;
+            if (isInterrupted()) {
+                throw new InterruptedException();
+            }
         }
     }
 

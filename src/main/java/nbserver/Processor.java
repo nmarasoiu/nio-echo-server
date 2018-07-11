@@ -32,7 +32,7 @@ public final class Processor implements RunnableWithException {
         }
     }
 
-    private void processConnectionsWithNewData() throws ClosedByInterruptException, InterruptedException {
+    private void processConnectionsWithNewData() throws InterruptedException {
         if (readSelector.isOpen()) {
             registerConnections();
             select();
