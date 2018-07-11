@@ -2,6 +2,7 @@ package nbserver;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.HashSet;
@@ -9,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-import static java.lang.Thread.currentThread;
 import static java.nio.ByteBuffer.allocateDirect;
 import static nbserver.Config.BUFFER_SIZE;
 import static nbserver.Pump.StreamState.EOF;
@@ -18,6 +18,7 @@ import static nbserver.Util.isInterrupted;
 
 final class Pump {
     enum StreamState {EOF, OPEN}
+
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
     private final Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
 
@@ -35,6 +36,7 @@ final class Pump {
                 } else if (unwrittenBytes()) {
                     moveToDedicatedBuffer(key);
                 }
+            } catch (ClosedByInterruptException ignore) {
             } catch (IOException e) {
                 close(key);
                 Util.log("readAndWrite " + e.getMessage() + ", closing the key, dropping remaining writes if any", e);

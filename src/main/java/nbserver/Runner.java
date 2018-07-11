@@ -26,8 +26,6 @@ public class Runner {
         taskFutures.add(executorService.submit(new ExitReporter(acceptor)));
         taskFutures.add(executorService.submit(new ExitReporter(processor)));
         Runtime.getRuntime().addShutdownHook(new Thread(() -> stop()));
-        sleep();
-        System.exit(0);
     }
 
     private boolean stop() {
@@ -45,11 +43,4 @@ public class Runner {
         return terminatedCleanly;
     }
 
-    private void sleep() {
-        try {
-            Thread.sleep(67000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
 }

@@ -1,21 +1,22 @@
 package nbserver;
 
+import java.util.concurrent.Callable;
+
 import static nbserver.Util.log;
 
-public class ExitReporter implements Runnable {
-    private final Runnable runnable;
+public class ExitReporter implements Callable<Void> {
+    private final RunnableWithException runnable;
 
-    public ExitReporter(Runnable runnable) {
+    ExitReporter(RunnableWithException runnable) {
         this.runnable = runnable;
     }
 
     @Override
-    public void run() {
-        log("Running "+runnable);
+    public Void call() throws Exception {
+        log("Running " + runnable);
         try {
             runnable.run();
-        } catch (Throwable t) {
-            t.printStackTrace();
+            return null;
         } finally {
             log("Exit " + runnable);
         }
