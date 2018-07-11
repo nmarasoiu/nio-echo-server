@@ -17,6 +17,9 @@ public class ExitReporter implements Callable<Void> {
         try {
             runnable.run();
             return null;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw t;
         } finally {
             log("Exit " + runnable);
         }

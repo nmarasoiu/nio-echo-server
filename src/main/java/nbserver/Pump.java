@@ -22,11 +22,11 @@ final class Pump {
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
     private final Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
 
-    void readAndWritePendingWrites() {
+    void readAndWritePendingWrites() throws ClosedByInterruptException {
         readAndWrite(new HashSet<>(pendingWrites.keySet()));
     }
 
-    void readAndWrite(Set<SelectionKey> keys) {
+    void readAndWrite(Set<SelectionKey> keys) throws ClosedByInterruptException {
         for (SelectionKey key : keys) {
             try {
                 movePendingBufferIfAnyToMainBuffer(key);
@@ -36,7 +36,8 @@ final class Pump {
                 } else if (unwrittenBytes()) {
                     moveToDedicatedBuffer(key);
                 }
-            } catch (ClosedByInterruptException ignore) {
+            } catch (ClosedByInterruptException e) {
+                throw e;
             } catch (IOException e) {
                 close(key);
                 Util.log("readAndWrite " + e.getMessage() + ", closing the key, dropping remaining writes if any", e);
@@ -79,6 +80,7 @@ final class Pump {
     private void close(SelectionKey key) {
         pendingWrites.remove(key);
         key.cancel();
+        Util.close(key.channel());
     }
 
     boolean hasPendingWrites() {

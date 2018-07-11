@@ -20,8 +20,7 @@ public class Acceptor implements RunnableWithException {
 
     @Override
     public void run() throws IOException, InterruptedException {
-        ServerSocketChannel serverSocket = ServerSocketChannel.open();
-        serverSocket.bind(address);
+        ServerSocketChannel serverSocket = ServerSocketChannel.open().bind(address);
         while (serverSocket.isOpen() && !isInterrupted()) {
             acceptorQueue.put(serverSocket.accept().configureBlocking(false));
         }
