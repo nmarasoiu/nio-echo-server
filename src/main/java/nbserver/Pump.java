@@ -2,9 +2,7 @@ package nbserver;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.ClosedByInterruptException;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -15,9 +13,11 @@ import static nbserver.Config.BUFFER_SIZE;
 import static nbserver.Pump.StreamState.EOF;
 import static nbserver.Pump.StreamState.OPEN;
 import static nbserver.Util.isInterrupted;
+import static nbserver.Util.log;
 
 final class Pump {
-    enum StreamState {EOF, OPEN}
+    enum StreamState {EOF, OPEN;}
+
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
     private final Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
 
@@ -29,17 +29,19 @@ final class Pump {
         for (SelectionKey key : keys) {
             try {
                 movePendingBufferIfAnyToMainBuffer(key);
-                StreamState streamState = copyUntilReadOrWriteBlocks(key);
+                StreamState streamState = copyUntilReadOrWriteBlocks((SocketChannel) key.channel());
                 if (streamState == EOF) {
                     close(key);
+                    log("Pump: EOF on " + key.channel());
                 } else if (unwrittenBytes()) {
                     moveToDedicatedBuffer(key);
                 }
             } catch (ClosedByInterruptException e) {
+                log("Pump: interrupted");
                 //interrupt status already set
             } catch (IOException e) {
                 close(key);
-                Util.log("readAndWrite " + e.getMessage() + ", closing the key, dropping remaining writes if any", e);
+                log("readAndWrite " + e.getMessage() + ", closing the key, dropping remaining writes if any");
             } finally {
                 buffer.clear();
             }
@@ -61,16 +63,41 @@ final class Pump {
         pendingWrites.put(key, pendingBuffer);
     }
 
-    private StreamState copyUntilReadOrWriteBlocks(SelectionKey key) throws IOException {
+    private StreamState copyUntilReadOrWriteBlocks(ByteChannel channel) throws IOException {
         int readCount;
-        boolean canWrite = true;
-        SocketChannel channel = (SocketChannel) key.channel();
-        while ((readCount = channel.read(buffer)) > 0 || (canWrite && unwrittenBytes())) {
-            buffer.flip();
-            canWrite = channel.write(buffer) > 0;
-            buffer.compact();
+        boolean canWrite = true, firstWrite = true, metDoubleEnter = false;
+        while ((readCount = channel.read(buffer)) > 0 || (metDoubleEnter && canWrite && unwrittenBytes())) {
+            metDoubleEnter = scanForDoubleEnter();
+            if (metDoubleEnter) {
+                if (firstWrite) {
+                    Util.writeHeader(buffer.position(), channel);
+                    firstWrite = false;
+                }
+                canWrite = writeBufferToSocket(channel);
+            }
         }
         return readCount == -1 ? EOF : OPEN;
+    }
+
+    private boolean scanForDoubleEnter() {
+        boolean metDoubleEnter = false;
+        for (int i = 0; i < buffer.position() - 1; i++) {
+            if (buffer.get(i) == '\n') {
+                byte nextChar = buffer.get(i + 1);
+                if (nextChar == '\n' || (nextChar == '\r' && buffer.get(i + 2) == '\n')) {
+                    metDoubleEnter = true;
+                    break;
+                }
+            }
+        }
+        return metDoubleEnter;
+    }
+
+    private boolean writeBufferToSocket(WritableByteChannel channel) throws IOException {
+        buffer.flip();
+        boolean canWrite = channel.write(buffer) > 0;
+        buffer.compact();
+        return canWrite;
     }
 
     private void movePendingBufferIfAnyToMainBuffer(SelectionKey key) {
@@ -87,4 +114,5 @@ final class Pump {
     boolean hasPendingWrites() {
         return !pendingWrites.isEmpty();
     }
+
 }
