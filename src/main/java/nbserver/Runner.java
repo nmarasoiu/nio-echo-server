@@ -4,6 +4,7 @@ import java.nio.channels.SelectableChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
@@ -21,8 +22,7 @@ public class Runner {
     }
 
     private void run() {
-        ConsumableBlockingQueue<SelectableChannel> acceptorQueue =
-                new ConsumableBlockingQueue<>(new ArrayBlockingQueue<>(ACCEPTOR_QUEUE_CAPACITY));
+        BlockingQueue<SelectableChannel> acceptorQueue = new ArrayBlockingQueue<>(ACCEPTOR_QUEUE_CAPACITY);
         Acceptor acceptor = new Acceptor(BIND_ADDRESS, acceptorQueue);
         Processor processor = new Processor(new Pump(), acceptorQueue);
         taskFutures.add(executorService.submit(new ExitReporter(acceptor)));

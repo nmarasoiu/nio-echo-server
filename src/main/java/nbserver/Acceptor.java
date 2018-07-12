@@ -4,14 +4,15 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.ServerSocketChannel;
+import java.util.concurrent.BlockingQueue;
 
 import static nbserver.Util.isInterrupted;
 
 public class Acceptor implements RunnableWithException {
     private final InetSocketAddress address;
-    private final ConsumableBlockingQueue<SelectableChannel> acceptorQueue;
+    private final BlockingQueue<SelectableChannel> acceptorQueue;
 
-    Acceptor(InetSocketAddress bindAddress, ConsumableBlockingQueue<SelectableChannel> acceptorQueue) {
+    Acceptor(InetSocketAddress bindAddress, BlockingQueue<SelectableChannel> acceptorQueue) {
         address = bindAddress;
         this.acceptorQueue = acceptorQueue;
     }

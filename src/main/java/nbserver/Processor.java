@@ -5,17 +5,18 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.util.concurrent.BlockingQueue;
 
 import static java.nio.channels.SelectionKey.OP_READ;
 import static nbserver.Config.selectTimeout;
 import static nbserver.Util.*;
 
 public final class Processor implements RunnableWithException {
-    private final ConsumableBlockingQueue<SelectableChannel> acceptorQueue;
+    private final BlockingQueue<SelectableChannel> acceptorQueue;
     private final Pump pump;
     private Selector readSelector;
 
-    Processor(Pump pump, ConsumableBlockingQueue<SelectableChannel> acceptorQueue) {
+    Processor(Pump pump, BlockingQueue<SelectableChannel> acceptorQueue) {
         this.pump = pump;
         this.acceptorQueue = acceptorQueue;
     }
@@ -59,7 +60,7 @@ public final class Processor implements RunnableWithException {
     }
 
     private void registerConnections() {
-        acceptorQueue.consumeQueue(channel -> {
+        consumeQueue(acceptorQueue, channel -> {
             try {
                 channel.register(readSelector, OP_READ);
             } catch (ClosedChannelException e) {
@@ -84,7 +85,7 @@ public final class Processor implements RunnableWithException {
     }
 
     private void closeAcceptedButNotRegisteredConnections() {
-        acceptorQueue.consumeQueue(channel -> close(channel));
+        consumeQueue(acceptorQueue, channel -> close(channel));
     }
 
 }
