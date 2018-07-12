@@ -1,9 +1,10 @@
 package nbserver;
 
 import java.io.IOException;
-import java.nio.channels.*;
-import java.nio.charset.Charset;
-import java.nio.charset.CharsetEncoder;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.util.concurrent.BlockingQueue;
 
 import static java.nio.channels.SelectionKey.OP_READ;
@@ -59,13 +60,14 @@ public final class Processor implements RunnableWithException {
     }
 
     private void registerConnections() {
-        consumeQueue(acceptorQueue, channel -> {
+        SelectableChannel channel = acceptorQueue.poll();
+        if (channel != null) {
             try {
                 channel.register(readSelector, OP_READ);
             } catch (ClosedChannelException e) {
                 log("Channel is closed when registering, ignoring", e);
             }
-        });
+        }
     }
 
     private void closeConnections() {
