@@ -2,7 +2,6 @@ package nbserver;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.channels.SocketChannel;
 import java.nio.channels.WritableByteChannel;
 import java.nio.charset.Charset;
 import java.util.concurrent.BlockingQueue;
@@ -45,12 +44,7 @@ final class Util {
     static void writeHeader(int length, WritableByteChannel channel) throws IOException {
         channel.write(
                 Charset.forName("UTF-8").encode("HTTP/1.1 200 OK\n" +
-//                                "Date: Mon, 27 Jul 2009 12:28:53 GMT\n" +
-//                                "Server: Apache/2.2.14 (Win32)\n" +
-//                                "Last-Modified: Wed, 22 Jul 2009 19:15:56 GMT\n" +
                         "Content-Length: " + length + "\n" +
-//                                "Content-Type: text/html\n" +
-//                                "Connection: Closed\n" +
                         "\n"));
     }
 }

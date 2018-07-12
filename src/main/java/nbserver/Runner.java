@@ -1,33 +1,34 @@
 package nbserver;
 
 import java.nio.channels.SelectableChannel;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.SynchronousQueue;
+import java.util.stream.Stream;
 
+import static java.lang.Runtime.getRuntime;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.TimeUnit.SECONDS;
-import static nbserver.Config.ACCEPTOR_QUEUE_CAPACITY;
+import static java.util.stream.Collectors.toList;
 import static nbserver.Config.BIND_ADDRESS;
+import static nbserver.Config.PROCESSORS;
 
 public class Runner {
     private final ExecutorService executorService = newCachedThreadPool();
-    private final List<Future> taskFutures = new ArrayList<>();
+    private volatile Iterable<Future<Void>> taskFutures;
 
     public static void main(String[] args) {
         new Runner().run();
     }
 
     private void run() {
-        BlockingQueue<SelectableChannel> acceptorQueue = new ArrayBlockingQueue<>(ACCEPTOR_QUEUE_CAPACITY);
+        BlockingQueue<SelectableChannel> acceptorQueue = new SynchronousQueue<>();
         Acceptor acceptor = new Acceptor(BIND_ADDRESS, acceptorQueue);
-        Processor processor = new Processor(new Pump(), acceptorQueue);
-        taskFutures.add(executorService.submit(new ExitReporter(acceptor)));
-        taskFutures.add(executorService.submit(new ExitReporter(processor)));
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> stop()));
+        taskFutures = Stream.concat(Stream.of(acceptor),
+                Stream.generate(() -> new Processor(new Pump(), acceptorQueue)).limit(PROCESSORS))
+                .map(task -> executorService.submit(new ExitReporter(task))).collect(toList());
+        getRuntime().addShutdownHook(new Thread(() -> stop()));
     }
 
     private boolean stop() {
