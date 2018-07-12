@@ -13,7 +13,7 @@ import static nbserver.Config.PROCESSORS;
 
 public class Runner {
     private final ExecutorService executorService = newCachedThreadPool();
-    private volatile Iterable<Future<Void>> taskFutures;
+    private volatile Iterable<Future<?>> taskFutures;
 
     public static void main(String[] args) {
                 new Runner().run();
