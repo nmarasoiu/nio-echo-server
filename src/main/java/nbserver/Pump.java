@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.ClosedByInterruptException;
-import java.nio.channels.SocketChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -27,11 +26,11 @@ final class Pump {
         readAndWrite(new HashSet<>(pendingWrites.keySet()));
     }
 
-    void readAndWrite(Iterable<ByteChannel> keys) throws InterruptedException {
-        for (ByteChannel key : keys) {
+    void readAndWrite(Iterable<ByteChannel> connections) throws InterruptedException {
+        for (ByteChannel key : connections) {
             try {
                 movePendingBufferIfAnyToMainBuffer(key);
-                StreamState streamState = copyUntilReadOrWriteBlocks((SocketChannel) key);
+                StreamState streamState = copyUntilReadOrWriteBlocks(key);
                 if (streamState == EOF) {
                     close(key);
                     log("Pump: EOF on " + key);
@@ -82,17 +81,15 @@ final class Pump {
     }
 
     private boolean scanForDoubleEnter() {
-        boolean metDoubleEnter = false;
         for (int i = 0; i < buffer.position() - 1; i++) {
             if (buffer.get(i) == '\n') {
                 byte nextChar = buffer.get(i + 1);
-                if (nextChar == '\n' || (nextChar == '\r' && buffer.get(i + 2) == '\n')) {
-                    metDoubleEnter = true;
-                    break;
+                if (nextChar == '\n' || (nextChar == '\r' && (i + 2 < buffer.limit() && buffer.get(i + 2) == '\n'))) {
+                    return true;
                 }
             }
         }
-        return metDoubleEnter;
+        return false;
     }
 
     private boolean writeBufferToSocket(WritableByteChannel channel) throws IOException {
