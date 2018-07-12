@@ -2,11 +2,13 @@ package nbserver;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
+import java.nio.channels.ByteChannel;
+import java.nio.channels.ClosedByInterruptException;
+import java.nio.channels.SocketChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 import static java.nio.ByteBuffer.allocateDirect;
 import static nbserver.Config.BUFFER_SIZE;
@@ -19,20 +21,20 @@ final class Pump {
     enum StreamState {EOF, OPEN;}
 
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
-    private final Map<SelectionKey, ByteBuffer> pendingWrites = new LinkedHashMap<>();
+    private final Map<ByteChannel, ByteBuffer> pendingWrites = new LinkedHashMap<>();
 
     void readAndWritePendingWrites() throws InterruptedException {
         readAndWrite(new HashSet<>(pendingWrites.keySet()));
     }
 
-    void readAndWrite(Set<SelectionKey> keys) throws InterruptedException {
-        for (SelectionKey key : keys) {
+    void readAndWrite(Iterable<ByteChannel> keys) throws InterruptedException {
+        for (ByteChannel key : keys) {
             try {
                 movePendingBufferIfAnyToMainBuffer(key);
-                StreamState streamState = copyUntilReadOrWriteBlocks((SocketChannel) key.channel());
+                StreamState streamState = copyUntilReadOrWriteBlocks((SocketChannel) key);
                 if (streamState == EOF) {
                     close(key);
-                    log("Pump: EOF on " + key.channel());
+                    log("Pump: EOF on " + key);
                 } else if (unwrittenBytes()) {
                     moveToDedicatedBuffer(key);
                 }
@@ -55,7 +57,7 @@ final class Pump {
         return buffer.position() > 0;
     }
 
-    private void moveToDedicatedBuffer(SelectionKey key) {
+    private void moveToDedicatedBuffer(ByteChannel key) {
         buffer.flip();
         ByteBuffer pendingBuffer = allocateDirect(buffer.limit());
         pendingBuffer.put(buffer);
@@ -100,15 +102,16 @@ final class Pump {
         return canWrite;
     }
 
-    private void movePendingBufferIfAnyToMainBuffer(SelectionKey key) {
+    private void movePendingBufferIfAnyToMainBuffer(ByteChannel key) {
         ByteBuffer pendingBuffer = pendingWrites.remove(key);
-        if (pendingBuffer != null) buffer.put(pendingBuffer);
+        if (pendingBuffer != null) {
+            buffer.put(pendingBuffer);
+        }
     }
 
-    private void close(SelectionKey key) {
+    private void close(ByteChannel key) {
         pendingWrites.remove(key);
-        key.cancel();
-        Util.close(key.channel());
+        Util.close(key);
     }
 
     boolean hasPendingWrites() {

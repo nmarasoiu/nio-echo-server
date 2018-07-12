@@ -1,14 +1,12 @@
 package nbserver;
 
 import java.io.IOException;
-import java.nio.channels.ClosedChannelException;
-import java.nio.channels.SelectableChannel;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
+import java.nio.channels.*;
 import java.util.concurrent.BlockingQueue;
+import java.util.stream.Collectors;
 
 import static java.nio.channels.SelectionKey.OP_READ;
-import static nbserver.Config.selectTimeout;
+import static nbserver.Config.SELECT_TIMEOUT;
 import static nbserver.Util.*;
 
 public final class Processor implements RunnableWithException {
@@ -32,8 +30,8 @@ public final class Processor implements RunnableWithException {
         } finally {
             try {
                 closeConnections();
-            } catch (Throwable t) {
-                log("Error, exception thrown in closeConnection on finally: ", t);
+            } catch (Exception e) {
+                log("Error, exception thrown in closeConnection on finally: ", e);
             }
         }
     }
@@ -43,14 +41,15 @@ public final class Processor implements RunnableWithException {
             registerConnections();
             select();
             if (!isInterrupted() && readSelector.isOpen()) {
-                pump.readAndWrite(readSelector.selectedKeys());
+                pump.readAndWrite(readSelector.selectedKeys().stream()
+                        .map(key -> (ByteChannel) key.channel()).collect(Collectors.toList()));
             }
         }
     }
 
     private void select() throws InterruptedException {
         try {
-            readSelector.select(selectTimeout);
+            readSelector.select(SELECT_TIMEOUT);
         } catch (IOException e) {
             log("IOException in select, will close the selector", e);
             for (SelectionKey key : readSelector.keys()) {

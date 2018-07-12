@@ -1,29 +1,26 @@
 package nbserver;
 
 import java.nio.channels.ClosedByInterruptException;
-import java.util.concurrent.Callable;
 
 import static nbserver.Util.log;
 
-public class ExitReporter implements Callable<Void> {
+public final class ExitReporter implements Runnable {
     private final RunnableWithException runnable;
 
-    ExitReporter(RunnableWithException runnable) {
-        this.runnable = runnable;
+    ExitReporter(RunnableWithException task) {
+        this.runnable = task;
     }
 
     @Override
-    public Void call() throws Exception {
+    public void run() {
         log("Running " + runnable);
         try {
             runnable.run();
         } catch (ClosedByInterruptException ignore) {
-        } catch (Throwable t) {
-            t.printStackTrace();
-            throw t;
+        } catch (Exception e) {
+            log("Caught exception in task " + this, e);
         } finally {
             log("Exit " + runnable);
         }
-        return null;
     }
 }

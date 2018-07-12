@@ -8,13 +8,13 @@ import java.util.concurrent.BlockingQueue;
 
 import static nbserver.Util.isInterrupted;
 
-public class Acceptor implements RunnableWithException {
+public final class Acceptor implements RunnableWithException {
     private final InetSocketAddress address;
     private final BlockingQueue<SelectableChannel> acceptorQueue;
 
-    Acceptor(InetSocketAddress bindAddress, BlockingQueue<SelectableChannel> acceptorQueue) {
+    Acceptor(InetSocketAddress bindAddress, BlockingQueue<SelectableChannel> queue) {
         address = bindAddress;
-        this.acceptorQueue = acceptorQueue;
+        this.acceptorQueue = queue;
     }
 
     @Override

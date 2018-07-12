@@ -38,7 +38,7 @@ final class Util {
     }
 
     static void log(String message) {
-        System.err.println(message);
+        System.err.println(message+":");
     }
 
     static void writeHeader(int length, WritableByteChannel channel) throws IOException {
