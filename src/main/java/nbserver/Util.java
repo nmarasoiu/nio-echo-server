@@ -4,13 +4,22 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.channels.WritableByteChannel;
 import java.nio.charset.Charset;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static java.lang.Thread.currentThread;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toSet;
 
 final class Util {
     private Util() {
+    }
+
+    static <T> Iterable<T> intersection(Set<T> set1, Set<T> set2) {
+        return set1.size() > set2.size() ? intersection(set2, set1) :
+                set1.stream().filter(elem -> set2.contains(elem)).collect(toList());
     }
 
     static <T> void consumeQueue(BlockingQueue<T> blockingQueue, Consumer<T> activity) {
@@ -24,7 +33,7 @@ final class Util {
             log("Closing " + closeable);
             closeable.close();
         } catch (IOException e) {
-            log("While closing: ", e);
+            log("While closing" + closeable + ": ", e);
         }
     }
 
@@ -38,7 +47,7 @@ final class Util {
     }
 
     static void log(String message) {
-        System.err.println(message+":");
+        System.err.println(message + ":");
     }
 
     static void writeHeader(int length, WritableByteChannel channel) throws IOException {

@@ -8,6 +8,7 @@ import java.nio.channels.WritableByteChannel;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static java.nio.ByteBuffer.allocateDirect;
 import static nbserver.Config.BUFFER_SIZE;
@@ -20,29 +21,25 @@ final class Pump {
     enum StreamState {EOF, OPEN;}
 
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
-    private final Map<ByteChannel, ByteBuffer> pendingWrites = new LinkedHashMap<>();
+    final static Map<ByteChannel, ByteBuffer> pendingWrites = new ConcurrentHashMap<>();//todo writeSelector
 
-    void readAndWritePendingWrites() throws InterruptedException {
-        readAndWrite(new HashSet<>(pendingWrites.keySet()));
-    }
-
-    void readAndWrite(Iterable<ByteChannel> connections) throws InterruptedException {
-        for (ByteChannel key : connections) {
+    void readAndWrite(Iterable<ByteChannel> channels) throws InterruptedException {
+        for (ByteChannel channel : channels) {
             try {
-                movePendingBufferIfAnyToMainBuffer(key);
-                StreamState streamState = copyUntilReadOrWriteBlocks(key);
+                movePendingBufferIfAnyToMainBuffer(channel);
+                StreamState streamState = copyUntilReadOrWriteBlocks(channel);
                 if (streamState == EOF) {
-                    close(key);
-                    log("Pump: EOF on " + key);
+                    close(channel);
+                    log("Pump: EOF on " + channel);
                 } else if (unwrittenBytes()) {
-                    moveToDedicatedBuffer(key);
+                    moveToDedicatedBuffer(channel);
                 }
             } catch (ClosedByInterruptException e) {
                 log("Pump: interrupted");
                 //interrupt status already set
             } catch (IOException e) {
-                close(key);
-                log("readAndWrite " + e.getMessage() + ", closing the key, dropping remaining writes if any");
+                close(channel);
+                log("readAndWrite " + e.getMessage() + ", closing the channel, dropping remaining writes if any");
             } finally {
                 buffer.clear();
             }
