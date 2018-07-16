@@ -20,6 +20,7 @@ final class Pump {
     private final Map<ByteChannel, ByteBuffer> pendingWrites = new LinkedHashMap<>();
 
     void readAndWritePendingWritesFromChannels(Set<ByteChannel> channelsWithRecentWrites) throws InterruptedException {
+        log("pending: "+pendingWrites.size());
         readAndWrite(channelsWithRecentWrites.stream()
                 .filter(byteChannel -> pendingWrites.containsKey(byteChannel))
                 .filter(byteChannel -> isWriting(pendingWrites.get(byteChannel))).collect(toList()));
@@ -31,9 +32,9 @@ final class Pump {
                 movePendingBufferIfAnyToMainBuffer(channel);
                 boolean writing = isWriting(buffer);
                 if (!writing) {
-                    int oldPosition = Math.max(buffer.position()-2,0);
+                    int oldPosition = Math.max(buffer.position() - 2, 0);
                     int readCount = channel.read(buffer);
-                    if(readCount==-1){
+                    if (readCount == -1) {
                         close(channel);
                         return;
                     }
@@ -43,12 +44,11 @@ final class Pump {
                         Util.writeHeader(buffer.limit(), channel);
                     }
                 }
-                if (writing && unwrittenBytes()) {
+                if (writing && notConsumed()) {
                     channel.write(buffer);
-                    buffer.compact();
                 }
-                if (unwrittenBytes()) {
-                    if(!writing){
+                if (notConsumed()) {
+                    if (!writing) {
                         buffer.flip();
                     }
                     moveToDedicatedBuffer(channel);
@@ -67,8 +67,8 @@ final class Pump {
 
     }
 
-    private boolean unwrittenBytes() {
-        return buffer.position() > 0;
+    private boolean notConsumed() {
+        return buffer.position() < buffer.limit();
     }
 
     private void moveToDedicatedBuffer(ByteChannel key) {
