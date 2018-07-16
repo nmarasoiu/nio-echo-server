@@ -12,5 +12,5 @@ final class Config {
     static final int BUFFER_SIZE = 2 * 1024 * 1024;
 
     static final long SELECT_TIMEOUT = 1;
-    static final int PROCESSORS = getRuntime().availableProcessors();
+    static final int PROCESSORS = 1;//getRuntime().availableProcessors();
 }

@@ -2,6 +2,7 @@ package nbserver;
 
 import java.io.IOException;
 import java.nio.channels.*;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -39,19 +40,19 @@ public final class Processor implements RunnableWithException {
     }
 
     private void processPendingWrites() throws InterruptedException {
-        if (writeSelector.isOpen()) {
-            select(writeSelector);
-            Set<ByteChannel> channelsWithRecentWrites = writeSelector.selectedKeys().stream().map(key -> (ByteChannel) key.channel()).collect(toSet());
-            pump.readAndWrite(intersection(channelsWithRecentWrites, pump.pendingWrites.keySet()));
+        if (writeSelector.isOpen() && pump.hasPendingWrites()) {
+            HashSet<SelectionKey> selectedKeys = select(writeSelector);
+            Set<ByteChannel> channelsWithRecentWrites = selectedKeys.stream().map(key -> (ByteChannel) key.channel()).collect(toSet());
+            pump.readAndWritePendingWritesFromChannels(channelsWithRecentWrites);
         }
     }
 
     private void processChannelsWithNewData() throws InterruptedException {
         if (readSelector.isOpen()) {
             registerChannels();
-            select(readSelector);
+            HashSet<SelectionKey> selectedKeys = select(readSelector);
             if (!isInterrupted() && readSelector.isOpen()) {
-                List<ByteChannel> channels = readSelector.selectedKeys().stream()
+                List<ByteChannel> channels = selectedKeys.stream()
                         .map(key -> (ByteChannel) key.channel())
                         .collect(Collectors.toList());
                 pump.readAndWrite(channels);
@@ -59,17 +60,16 @@ public final class Processor implements RunnableWithException {
         }
     }
 
-    private void select(Selector selector) throws InterruptedException {
+    private HashSet<SelectionKey> select(Selector selector) {
         try {
             selector.select(SELECT_TIMEOUT);
+            HashSet<SelectionKey> keys = new HashSet<>(selector.selectedKeys());
+            selector.selectedKeys().removeAll(selector.selectedKeys());
+            return keys;
         } catch (IOException e) {
-            //todo to treat exceptions locally, or let them bubble up after cleanup/move?
-            log("IOException in select, will close the selector and move channels back in the accepted queue", e);
-            for (SelectionKey key : readSelector.keys()) {
-                acceptorQueue.put(key.channel());
-            }
-            closeSelectors();
+            e.printStackTrace();
         }
+        return new HashSet<>();
     }
 
     private void registerChannels() {
