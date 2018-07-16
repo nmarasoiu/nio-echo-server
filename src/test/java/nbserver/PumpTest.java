@@ -41,7 +41,7 @@ public class PumpTest {
             return 3;
         });
         new Pump().readAndWrite(singletonList(channel));
-        verify(channel, times(2)).read(any());
+        verify(channel).read(any());
         verify(channel).write(any());
     }
 

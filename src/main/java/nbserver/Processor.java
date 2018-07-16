@@ -62,7 +62,7 @@ public final class Processor implements RunnableWithException {
 
     private HashSet<SelectionKey> select(Selector selector) {
         try {
-            selector.select(SELECT_TIMEOUT);
+            selector.selectNow();
             HashSet<SelectionKey> keys = new HashSet<>(selector.selectedKeys());
             selector.selectedKeys().removeAll(selector.selectedKeys());
             return keys;

@@ -43,7 +43,7 @@ final class Pump {
                         Util.writeHeader(buffer.limit(), channel);
                     }
                 }
-                if (writing) {
+                if (writing && unwrittenBytes()) {
                     channel.write(buffer);
                     buffer.compact();
                 }
