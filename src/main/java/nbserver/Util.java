@@ -7,11 +7,9 @@ import java.nio.charset.Charset;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 import static java.lang.Thread.currentThread;
 import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toSet;
 
 final class Util {
     private Util() {
@@ -42,12 +40,12 @@ final class Util {
     }
 
     static void log(String message, Throwable e) {
-        log(message);
+        log(message + ":");
         e.printStackTrace();
     }
 
     static void log(String message) {
-        System.err.println(message + ":");
+        System.err.println(message);
     }
 
     static void writeHeader(int length, WritableByteChannel channel) throws IOException {
