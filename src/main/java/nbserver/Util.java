@@ -2,28 +2,13 @@ package nbserver;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.channels.WritableByteChannel;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
-import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.function.Consumer;
 
 import static java.lang.Thread.currentThread;
-import static java.util.stream.Collectors.toList;
 
 final class Util {
     private Util() {
-    }
-
-    static <T> Iterable<T> intersection(Set<T> set1, Set<T> set2) {
-        return set1.size() > set2.size() ? intersection(set2, set1) :
-                set1.stream().filter(elem -> set2.contains(elem)).collect(toList());
-    }
-
-    static <T> void consumeQueue(BlockingQueue<T> blockingQueue, Consumer<T> activity) {
-        for (T elem = blockingQueue.poll(); elem != null; elem = blockingQueue.poll()) {
-            activity.accept(elem);
-        }
     }
 
     static void close(Closeable closeable) {
@@ -48,7 +33,7 @@ final class Util {
         System.err.println(message);
     }
 
-    static void writeHeader(int length, WritableByteChannel channel) throws IOException {
+    static void writeHeader(int length, SocketChannel channel) throws IOException {
         channel.write(
                 Charset.forName("UTF-8").encode("HTTP/1.1 200 OK\n" +
                         "Content-Length: " + length + "\n" +

@@ -4,24 +4,24 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.ServerSocketChannel;
-import java.util.concurrent.BlockingQueue;
+import java.nio.channels.SocketChannel;
 
-import static nbserver.Util.isInterrupted;
+import static nbserver.Util.log;
 
-public final class Acceptor implements RunnableWithException {
-    private final InetSocketAddress address;
-    private final BlockingQueue<SelectableChannel> acceptorQueue;
+final class Acceptor {
+    private final ServerSocketChannel serverSocket;
 
-    Acceptor(InetSocketAddress bindAddress, BlockingQueue<SelectableChannel> queue) {
-        address = bindAddress;
-        this.acceptorQueue = queue;
+    Acceptor(InetSocketAddress bindAddress) throws IOException {
+        serverSocket = (ServerSocketChannel) ServerSocketChannel.open().bind(bindAddress).configureBlocking(false);
     }
 
-    @Override
-    public void run() throws IOException, InterruptedException {
-        ServerSocketChannel serverSocket = ServerSocketChannel.open().bind(address);
-        while (serverSocket.isOpen() && !isInterrupted()) {
-            acceptorQueue.put(serverSocket.accept().configureBlocking(false));
+    SelectableChannel accept() {
+        try {
+            SocketChannel channel = serverSocket.accept();
+            return channel != null ? channel.configureBlocking(false) : null;
+        } catch (IOException e) {
+            log("Exception in acccept", e);
+            return null;
         }
     }
 }

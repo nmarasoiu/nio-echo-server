@@ -2,13 +2,16 @@ package nbserver;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static java.nio.ByteBuffer.allocateDirect;
+import static java.nio.channels.SelectionKey.OP_WRITE;
 import static java.util.stream.Collectors.toList;
 import static nbserver.Config.BUFFER_SIZE;
 import static nbserver.Util.isInterrupted;
@@ -17,17 +20,27 @@ import static nbserver.Util.log;
 final class Pump {
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
 
-    private final Map<ByteChannel, ByteBuffer> pendingWrites = new LinkedHashMap<>();
+    private final Map<SocketChannel, ByteBuffer> pendingWrites = new LinkedHashMap<>();
+    private final Selector writeSelector;
 
-    void readAndWritePendingWritesFromChannels(Set<ByteChannel> channelsWithRecentWrites) throws InterruptedException {
-        log("pending: "+pendingWrites.size());
-        readAndWrite(channelsWithRecentWrites.stream()
-                .filter(byteChannel -> pendingWrites.containsKey(byteChannel))
-                .filter(byteChannel -> isWriting(pendingWrites.get(byteChannel))).collect(toList()));
+    Pump(Selector writeSelector) {
+        this.writeSelector = writeSelector;
     }
 
-    void readAndWrite(Iterable<ByteChannel> channels) throws InterruptedException {
-        for (ByteChannel channel : channels) {
+    void readAndWritePendingWritesFromChannels(Collection<SocketChannel> channelsWithRecentWrites) throws InterruptedException {
+        List<SocketChannel> channels = channelsWithRecentWrites.stream()
+                .filter(SocketChannel -> {
+                    ByteBuffer buffer = pendingWrites.get(SocketChannel);
+                    return buffer != null && isWriting(buffer);
+                }).collect(toList());
+        if (!channels.isEmpty()) {
+            log("channels with recent writes: " + channels.size());
+        }
+        readAndWrite(channels);
+    }
+
+    void readAndWrite(Collection<SocketChannel> channels) throws InterruptedException {
+        for (SocketChannel channel : channels) {
             try {
                 movePendingBufferIfAnyToMainBuffer(channel);
                 boolean writing = isWriting(buffer);
@@ -45,7 +58,10 @@ final class Pump {
                     }
                 }
                 if (writing && notConsumed()) {
-                    channel.write(buffer);
+                    int writeCount = channel.write(buffer);
+                    if (writeCount == 0) {
+                        channel.register(writeSelector, OP_WRITE);
+                    }
                 }
                 if (notConsumed()) {
                     if (!writing) {
@@ -71,11 +87,11 @@ final class Pump {
         return buffer.position() < buffer.limit();
     }
 
-    private void moveToDedicatedBuffer(ByteChannel key) {
+    private void moveToDedicatedBuffer(SocketChannel chan) {
         ByteBuffer pendingBuffer = allocateDirect(buffer.limit());
         pendingBuffer.put(buffer);
         pendingBuffer.flip();
-        pendingWrites.put(key, pendingBuffer);
+        pendingWrites.put(chan, pendingBuffer);
     }
 
     private boolean isWriting(ByteBuffer buffer) {
@@ -95,14 +111,14 @@ final class Pump {
         return false;
     }
 
-    private void movePendingBufferIfAnyToMainBuffer(ByteChannel key) {
+    private void movePendingBufferIfAnyToMainBuffer(SocketChannel key) {
         ByteBuffer pendingBuffer = pendingWrites.remove(key);
         if (pendingBuffer != null) {
             this.buffer.put(pendingBuffer);
         }
     }
 
-    private void close(ByteChannel key) {
+    private void close(SocketChannel key) {
         pendingWrites.remove(key);
         Util.close(key);
     }
