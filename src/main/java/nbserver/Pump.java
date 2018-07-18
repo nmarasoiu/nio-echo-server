@@ -78,7 +78,11 @@ final class Pump {
             } catch (ClosedChannelException ignore) {
             } catch (IOException e) {
                 close(channel);
-                log("readAndWrite " + e.getMessage() + ", closing the channel, dropping remaining writes if any");
+                if(!e.getMessage().contains("Connection reset by peer")) {
+                    if (!e.getMessage().contains("Broken pipe")) {
+                        log("readAndWrite " + e.getMessage() + ", closing the channel, dropping remaining writes if any");
+                    }
+                }
             } finally {
                 buffer.clear();
             }

@@ -13,7 +13,7 @@ final class Util {
 
     static void close(Closeable closeable) {
         try {
-            log("Closing " + closeable);
+//            log("Closing " + closeable);
             closeable.close();
         } catch (IOException e) {
             log("While closing" + closeable + ": ", e);
