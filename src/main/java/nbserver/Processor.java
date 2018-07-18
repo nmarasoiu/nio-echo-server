@@ -59,7 +59,7 @@ public final class Processor implements RunnableWithException {
 
     private List<SocketChannel> select(Selector selector, boolean read) {
         try {
-            int selectedCount = selector.selectNow();
+            int selectedCount = selector.select(100);
 //            if (selectedCount > 0) log("selectedCount=" + selectedCount);
             List<SocketChannel> channels = Collections.unmodifiableList(selector.selectedKeys().stream()
                     .map(key -> (SocketChannel) key.channel())
