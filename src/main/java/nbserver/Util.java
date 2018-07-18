@@ -30,7 +30,7 @@ final class Util {
     }
 
     static void log(String message) {
-        System.err.println(message);
+        System.err.println(System.nanoTime() + " " + message);
     }
 
     static void writeHeader(int length, SocketChannel channel) throws IOException {

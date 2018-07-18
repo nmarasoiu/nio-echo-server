@@ -47,6 +47,7 @@ final class Pump {
                 if (!writing) {
                     int oldPosition = Math.max(buffer.position() - 2, 0);
                     int readCount = channel.read(buffer);
+//                    log("readCount=" + readCount);
                     if (readCount == -1) {
                         close(channel);
                         return;
@@ -55,15 +56,20 @@ final class Pump {
                     if (writing) {
                         buffer.flip();
                         Util.writeHeader(buffer.limit(), channel);
+                    } else {
+                        log("dblEnter not found after a read pass");
                     }
                 }
                 if (writing && notConsumed()) {
                     int writeCount = channel.write(buffer);
+//                    log("writeCount=" + writeCount);
                     if (writeCount == 0) {
+                        log("Registering to writeSel, count was 0");
                         channel.register(writeSelector, OP_WRITE);
                     }
                 }
                 if (notConsumed()) {
+                    log("moving to dedicated");
                     if (!writing) {
                         buffer.flip();
                     }
@@ -80,7 +86,6 @@ final class Pump {
                 throw new InterruptedException();
             }
         }
-
     }
 
     private boolean notConsumed() {

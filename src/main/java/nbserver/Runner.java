@@ -1,8 +1,11 @@
 package nbserver;
 
 import java.io.IOException;
+import java.nio.channels.SocketChannel;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.stream.Stream;
 
 import static java.lang.Runtime.getRuntime;
@@ -21,9 +24,9 @@ public class Runner {
     }
 
     private void run() throws IOException {
-        Acceptor acceptor = new Acceptor(BIND_ADDRESS);
-        taskFutures = Stream.generate(() -> new Processor(acceptor))
-                .limit(PROCESSORS)
+        ArrayBlockingQueue<SocketChannel> queue = new ArrayBlockingQueue<>(12000);
+        Acceptor acceptor = new Acceptor(BIND_ADDRESS, queue);
+        taskFutures = Stream.concat(Stream.of(acceptor), Stream.generate(() -> new Processor(queue)).limit(PROCESSORS))
                 .map(task -> executorService.submit(new ExitReporter(task)))
                 .collect(toList());
         getRuntime().addShutdownHook(new Thread(() -> stop()));

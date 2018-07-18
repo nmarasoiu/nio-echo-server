@@ -1,22 +1,28 @@
 package nbserver;
 
 import java.io.IOException;
-import java.nio.channels.*;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
 
 import static java.nio.channels.SelectionKey.OP_READ;
 import static nbserver.Util.*;
 
 public final class Processor implements RunnableWithException {
-    private final Acceptor acceptor;
+    private final BlockingQueue<SocketChannel> queue;
     private final Pump pump;
     private Selector readSelector, writeSelector;
 
-    Processor(Acceptor acceptor) {
+    Processor(BlockingQueue<SocketChannel> queue) {
         this.pump = new Pump(writeSelector);
-        this.acceptor = acceptor;
+        this.queue = queue;
     }
 
     @Override
@@ -34,7 +40,8 @@ public final class Processor implements RunnableWithException {
     }
 
     private void processPendingWrites() throws InterruptedException {
-        if (writeSelector.isOpen() && pump.hasPendingWrites()) {
+        if (pump.hasPendingWrites() && writeSelector.isOpen()) {
+            log("pending pass");
             List<SocketChannel> selectedChannels = select(writeSelector, false);
             pump.readAndWritePendingWritesFromChannels(selectedChannels);
         }
@@ -52,7 +59,8 @@ public final class Processor implements RunnableWithException {
 
     private List<SocketChannel> select(Selector selector, boolean read) {
         try {
-            selector.selectNow();
+            int selectedCount = selector.select(1);
+//            if (selectedCount > 0) log("selectedCount=" + selectedCount);
             List<SocketChannel> channels = Collections.unmodifiableList(selector.selectedKeys().stream()
                     .map(key -> (SocketChannel) key.channel())
                     .collect(Collectors.toList()));
@@ -69,8 +77,12 @@ public final class Processor implements RunnableWithException {
     }
 
     private void registerChannels() {
-        SelectableChannel channel = acceptor.accept();
-        if (channel != null) {
+        Collection<SocketChannel> channels = new ArrayList<>();
+        queue.drainTo(channels);
+        if (!channels.isEmpty()) {
+            log("Accepting " + channels.size() + " channels");
+        }
+        for (SocketChannel channel : channels) {
             try {
                 channel.register(readSelector, OP_READ);
             } catch (ClosedChannelException e) {
