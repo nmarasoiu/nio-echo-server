@@ -19,8 +19,8 @@ import static nbserver.Util.isInterrupted;
 import static nbserver.Util.log;
 
 final class Pump {
-    static final Charset charset = Charset.forName("UTF-8");
-    public static final String newlines = "\n\n\n\n";
+    private static final Charset charset = Charset.forName("UTF-8");
+    private static final String newlines = "\n\n\n\n";
     private static final ByteBuffer headerBuf = charset.encode("HTTP/1.1 200 OK\n" +
             "Content-Length: " + newlines);
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
@@ -52,24 +52,18 @@ final class Pump {
                 if (!writing) {
                     final int oldPosition;
                     if (buffer.position() == 0) {
+                        headerBuf.rewind();
                         buffer.put(headerBuf);
                         oldPosition = buffer.position();
                     } else {
                         oldPosition = Math.max(buffer.position() - 2, 0);
                     }
                     int readCount = channel.read(buffer);
-                    log("readCount=" + readCount);
-                    if (readCount == -1) {
-                        close(channel);
-                        return;
-                    }
+//                    log("readCount=" + readCount);
+                    if (receivedEof(channel, readCount)) return;
                     writing = scanForDoubleEnter(oldPosition);
                     if (writing) {
-                        int length = buffer.position() - headerBuf.limit();
-                        int position = buffer.position();
-                        buffer.position(headerBuf.limit() - newlines.length());
-                        buffer.put(charset.encode(String.valueOf(length)));
-                        buffer.position(position);
+                        writeLengthHeader();
                         buffer.flip();
                     } else {
                         log("dblEnter not found after a read pass");
@@ -77,7 +71,7 @@ final class Pump {
                 }
                 if (writing && notConsumed()) {
                     int writeCount = channel.write(buffer);
-                    log("writeCount=" + writeCount);
+//                    log("writeCount=" + writeCount);
                     if (writeCount == 0) {
                         log("Registering to writeSel, count was 0");
                         channel.register(writeSelector, OP_WRITE);
@@ -92,7 +86,7 @@ final class Pump {
                 }
             } catch (ClosedChannelException ignore) {
             } catch (IOException e) {
-                close(channel);
+                receivedEof(channel);
                 if (!e.getMessage().contains("Connection reset by peer")) {
                     if (!e.getMessage().contains("Broken pipe")) {
                         log("readAndWrite " + e.getMessage() + ", closing the channel, dropping remaining writes if any");
@@ -105,6 +99,22 @@ final class Pump {
                 throw new InterruptedException();
             }
         }
+    }
+
+    private boolean receivedEof(SocketChannel channel, int readCount) {
+        if (readCount == -1) {
+            receivedEof(channel);
+            return true;
+        }
+        return false;
+    }
+
+    private void writeLengthHeader() {
+        int length = buffer.position() - headerBuf.limit();
+        int position = buffer.position();
+        buffer.position(headerBuf.limit() - newlines.length());
+        buffer.put(charset.encode(String.valueOf(length)));
+        buffer.position(position);
     }
 
     private boolean notConsumed() {
@@ -142,7 +152,7 @@ final class Pump {
         }
     }
 
-    private void close(SocketChannel key) {
+    private void receivedEof(SocketChannel key) {
         pendingWrites.remove(key);
         Util.close(key);
     }
