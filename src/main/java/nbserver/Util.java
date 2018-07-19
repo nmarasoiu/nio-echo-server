@@ -2,8 +2,6 @@ package nbserver;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.channels.SocketChannel;
-import java.nio.charset.Charset;
 
 import static java.lang.Thread.currentThread;
 
@@ -33,10 +31,4 @@ final class Util {
         System.err.println(System.nanoTime() + " " + message);
     }
 
-    static void writeHeader(int length, SocketChannel channel) throws IOException {
-        channel.write(
-                Charset.forName("UTF-8").encode("HTTP/1.1 200 OK\n" +
-                        "Content-Length: " + length + "\n" +
-                        "\n"));
-    }
 }

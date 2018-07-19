@@ -41,7 +41,6 @@ public final class Processor implements RunnableWithException {
 
     private void processPendingWrites() throws InterruptedException {
         if (pump.hasPendingWrites() && writeSelector.isOpen()) {
-//            log("pending pass");
             List<SocketChannel> selectedChannels = select(writeSelector, false);
             pump.readAndWritePendingWritesFromChannels(selectedChannels);
         }
@@ -59,7 +58,7 @@ public final class Processor implements RunnableWithException {
 
     private List<SocketChannel> select(Selector selector, boolean read) {
         try {
-            int selectedCount = selector.select(100);
+            int selectedCount = selector.select(19);
 //            if (selectedCount > 0) log("selectedCount=" + selectedCount);
             List<SocketChannel> channels = Collections.unmodifiableList(selector.selectedKeys().stream()
                     .map(key -> (SocketChannel) key.channel())

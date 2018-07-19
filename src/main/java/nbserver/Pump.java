@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +19,10 @@ import static nbserver.Util.isInterrupted;
 import static nbserver.Util.log;
 
 final class Pump {
+    static final Charset charset = Charset.forName("UTF-8");
+    public static final String newlines = "\n\n\n\n";
+    private static final ByteBuffer headerBuf = charset.encode("HTTP/1.1 200 OK\n" +
+            "Content-Length: " + newlines);
     private final ByteBuffer buffer = allocateDirect(BUFFER_SIZE);
 
     private final Map<SocketChannel, ByteBuffer> pendingWrites = new LinkedHashMap<>();
@@ -45,24 +50,34 @@ final class Pump {
                 movePendingBufferIfAnyToMainBuffer(channel);
                 boolean writing = isWriting(buffer);
                 if (!writing) {
-                    int oldPosition = Math.max(buffer.position() - 2, 0);
+                    final int oldPosition;
+                    if (buffer.position() == 0) {
+                        buffer.put(headerBuf);
+                        oldPosition = buffer.position();
+                    } else {
+                        oldPosition = Math.max(buffer.position() - 2, 0);
+                    }
                     int readCount = channel.read(buffer);
-//                    log("readCount=" + readCount);
+                    log("readCount=" + readCount);
                     if (readCount == -1) {
                         close(channel);
                         return;
                     }
                     writing = scanForDoubleEnter(oldPosition);
                     if (writing) {
+                        int length = buffer.position() - headerBuf.limit();
+                        int position = buffer.position();
+                        buffer.position(headerBuf.limit() - newlines.length());
+                        buffer.put(charset.encode(String.valueOf(length)));
+                        buffer.position(position);
                         buffer.flip();
-                        Util.writeHeader(buffer.limit(), channel);
                     } else {
                         log("dblEnter not found after a read pass");
                     }
                 }
                 if (writing && notConsumed()) {
                     int writeCount = channel.write(buffer);
-//                    log("writeCount=" + writeCount);
+                    log("writeCount=" + writeCount);
                     if (writeCount == 0) {
                         log("Registering to writeSel, count was 0");
                         channel.register(writeSelector, OP_WRITE);
@@ -78,7 +93,7 @@ final class Pump {
             } catch (ClosedChannelException ignore) {
             } catch (IOException e) {
                 close(channel);
-                if(!e.getMessage().contains("Connection reset by peer")) {
+                if (!e.getMessage().contains("Connection reset by peer")) {
                     if (!e.getMessage().contains("Broken pipe")) {
                         log("readAndWrite " + e.getMessage() + ", closing the channel, dropping remaining writes if any");
                     }
